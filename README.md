@@ -41,7 +41,8 @@ class User(models.Model):
 That's it, you can use basic features (select, insert) normally:
 
 ```python
-User.objects.create(name="i just created this, again", email="some@email-value-2")
+User.objects.create(name="i just created this, again",
+                    email="some@email-value-2")
 
 user = User.objects.get(name='i just created this')
 print(user, user.id, user.name, user.email)
