@@ -1,0 +1,9 @@
+[project]
+name = "django-prisma"
+description = "django-prisma package"
+version = "0.1.0"
+authors = []
+dependencies = [
+    "django",
+]
+
