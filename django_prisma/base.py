@@ -74,20 +74,18 @@ class PrismaDatabase:
     Error = Error
 
 
-url = (
-    "https://accelerate.prisma-data.net/5.1.1/25765d5ea75691a914d604c337b58f4266f172207c9572dbbce34e59ef38ee8b/graphql"
-)
-
-
 class Cursor:
-    def __init__(self, token):
+    url = "https://accelerate.prisma-data.net/5.1.1/{schema_id}/graphql"
+
+    def __init__(self, token, schema_id):
         self.token = token
+        self.schema_id = schema_id
 
     def execute(self, other, other2=None):
         key = other.statement["action"] + other.statement["modelName"]  # findMany User
         data = json.dumps(other.statement)
         headers = {"Connection": "keep-alive", "Authorization": f"Bearer {self.token}"}
-        r = requests.post(url, headers=headers, verify=False, data=data)
+        r = requests.post(Cursor.url.format(schema_id=self.schema_id), headers=headers, verify=False, data=data)
         _json = r.json()
         for error in _json.get("errors", []):
             ufe = error["user_facing_error"]
@@ -124,7 +122,7 @@ class PrismaDatabaseWrapper(BaseDatabaseWrapper):
         super().__init__(*args, **kwargs)
 
     def create_cursor(self, name=None):
-        return Cursor(self.settings_dict["TOKEN"])
+        return Cursor(self.settings_dict["TOKEN"], self.settings_dict["SCHEMA_ID"])
 
     def is_usable(self):
         return True
