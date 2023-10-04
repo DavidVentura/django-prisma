@@ -52,18 +52,16 @@ def where_to_dict(w: WhereNode):
 
 
 class SelectStatement:
-    def __init__(self, model: str, cols: list[Col], where: WhereNode):
+    def __init__(self, model: str, field_names: list[str], where: WhereNode):
         self.model = model
-        self.field_names = [f.field.name for f in cols]
+        self.field_names = field_names
         self.where = where
         _where = where_to_dict(where)
         self.statement = {
-            "modelName": "User",
+            "modelName": model,
             "action": "findMany",
             "query": {
                 "arguments": {
-                    "skip": 0,
-                    "take": 4,
                     "where": _where,
                 },
                 "selection": {"$composites": True, "$scalars": True},
@@ -86,7 +84,7 @@ class SQLCompiler(BaseSQLCompiler):
         # pre_sql_setup mutates self and populates `self.select`
         extra_select, order_by, group_by = self.pre_sql_setup(with_col_aliases=False)
         opts = self.query.get_meta()
-        fields = [f[0] for f in self.select]
+        fields = [(f.db_column or f.attname) for f in opts.fields]
         st = SelectStatement(opts.db_table, fields, self.where)
         return st
 
