@@ -1,3 +1,5 @@
+import base64
+import hashlib
 import json
 
 import requests
@@ -12,6 +14,10 @@ from django.db.backends.base.base import BaseDatabaseWrapper
 from django.db.backends.base.operations import BaseDatabaseOperations
 from django.db.backends.base.introspection import BaseDatabaseIntrospection
 from django.db.backends.base.schema import BaseDatabaseSchemaEditor
+
+
+GRAPHQL_ENDPOINT = "https://accelerate.prisma-data.net/5.1.1/{schema_id}/graphql"
+SCHEMA_ENDPOINT = "https://accelerate.prisma-data.net/5.1.1/{schema_id}/schema"
 
 
 class PrismaDatabaseFeatures(DatabaseFeatures):
@@ -75,17 +81,14 @@ class PrismaDatabase:
 
 
 class Cursor:
-    url = "https://accelerate.prisma-data.net/5.1.1/{schema_id}/graphql"
-
-    def __init__(self, token, schema_id):
-        self.token = token
+    def __init__(self, session, schema_id):
+        self.session = session
         self.schema_id = schema_id
 
     def execute(self, other, other2=None):
         key = other.statement["action"] + other.statement["modelName"]  # findMany User
         data = json.dumps(other.statement)
-        headers = {"Connection": "keep-alive", "Authorization": f"Bearer {self.token}"}
-        r = requests.post(Cursor.url.format(schema_id=self.schema_id), headers=headers, verify=False, data=data)
+        r = self.session.post(GRAPHQL_ENDPOINT.format(schema_id=self.schema_id), verify=False, data=data)
         _json = r.json()
         for error in _json.get("errors", []):
             ufe = error["user_facing_error"]
@@ -120,9 +123,18 @@ class PrismaDatabaseWrapper(BaseDatabaseWrapper):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        with open(self.settings_dict["SCHEMA_PATH"], "rb") as fd:
+            self.schema = fd.read()
+        self.schema_inline = base64.b64encode(self.schema)
+        self.schema_id = hashlib.sha256(self.schema_inline).hexdigest()
+        self.token = self.settings_dict["TOKEN"]
+
+        headers = {"Connection": "keep-alive", "Authorization": f"Bearer {self.token}"}
+        self.session = requests.Session()
+        self.session.headers.update(headers)
 
     def create_cursor(self, name=None):
-        return Cursor(self.settings_dict["TOKEN"], self.settings_dict["SCHEMA_ID"])
+        return Cursor(self.session, self.schema_id)
 
     def is_usable(self):
         return True
@@ -132,6 +144,10 @@ class PrismaDatabaseWrapper(BaseDatabaseWrapper):
 
     def connect(self):
         print("called connect")
-
+        r = self.session.put(
+            SCHEMA_ENDPOINT.format(schema_id=self.schema_id), data=self.schema_inline, verify=False
+        )
+        if not r.ok:
+            raise ValueError(f"Failed to start up data-proxy: {r.text}")
 
 DatabaseWrapper = PrismaDatabaseWrapper

@@ -5,14 +5,14 @@ This does not manage the database schema yet, so you must ensure your models mat
 
 ## Example
 
-Configure your back-end to use this backend by setting your token and schema id.
+Configure your back-end to use this backend by setting your token and schema path.
 
 ```python
 DATABASES = {
     'default': {
         'ENGINE': 'django_prisma',
         'TOKEN': 'fill me in',
-        'SCHEMA_ID': 'fill me in',
+        'SCHEMA_PATH': 'fill me in',
     }
 }
 

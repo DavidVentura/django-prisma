@@ -1,7 +1,6 @@
 from typing import Any
 from django.db.models.query import Field
-from django.db.models.expressions import Col
-from django.db.models.sql.constants import MULTI, CURSOR, SINGLE
+from django.db.models.sql.constants import MULTI, SINGLE
 from django.db.models.sql.compiler import (
     SQLAggregateCompiler as BaseSQLAggregateCompiler,
     SQLCompiler as BaseSQLCompiler,
