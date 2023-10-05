@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Protocol
 from django.db.models.query import Field
 from django.db.models.sql.constants import MULTI, SINGLE
 from django.db.models.sql.compiler import (
@@ -8,14 +8,16 @@ from django.db.models.sql.compiler import (
     SQLInsertCompiler as BaseSQLInsertCompiler,
     SQLUpdateCompiler as BaseSQLUpdateCompiler,
 )
+from django.db.models.sql.datastructures import Join
 from django.db.models.sql.where import WhereNode, AND, tree
-from django.db.models.lookups import Exact
+from django.db.models.lookups import Exact, In
+from django.db.models.expressions import Col
 
 
 class InsertStatement:
     def __init__(self, model: str, field_names: list[Field], values: list):
         self.model = model
-        self.field_names = [f.name for f in field_names]
+        self.field_names: list[str] = [f.name for f in field_names]
         self.field_values = values
 
     @property
@@ -32,6 +34,10 @@ class InsertStatement:
         self.field_values = field_values()
         return self.statement
 
+    def dict_to_tuple(self, data: dict[str, Any]) -> list[Any]:
+        ret = [data[colname] for colname in self.field_names]
+        return ret
+
 
 def node_to_dict(n: tree.Node):
     match n:
@@ -39,7 +45,11 @@ def node_to_dict(n: tree.Node):
             return {n.lhs.field.name: n.rhs}
         case WhereNode():
             return where_to_dict(n)
-    assert False
+        case In():
+            assert isinstance(n.lhs, Col)
+            assert isinstance(n.rhs, list)
+            return {n.lhs.field.name: {"in": n.rhs}}
+    assert False, f'got {n}'
 
 
 def where_to_dict(w: WhereNode):
@@ -50,11 +60,17 @@ def where_to_dict(w: WhereNode):
     return ret
 
 
+class Statement(Protocol):
+    statement: dict
+    def dict_to_tuple(self, data: dict[str, Any]) -> tuple[Any]:
+        ...
+
 class SelectStatement:
-    def __init__(self, model: str, field_names: list[str], where: WhereNode):
+    def __init__(self, model: str, field_names: list[str], where: WhereNode, joins: list[Join]):
         self.model = model
         self.field_names = field_names
         self.where = where
+        self.joins = joins
         _where = where_to_dict(where)
         self.statement = {
             "modelName": model,
@@ -67,11 +83,26 @@ class SelectStatement:
             },
         }
 
+        for join in joins:
+            # True here means all of them in default order
+            # Can apply sorting and filtering
+            # This is recursive also
+            # And can select a subset of fields.. but not sure how to in django
+            self.statement['query']['selection'][join.join_field.name] = True
+
     def query(self) -> dict[str, Any]:
         return self.statement
 
+    def dict_to_tuple(self, data: dict[str, Any]) -> list[Any]:
+        ret = [data[colname] for colname in self.field_names]
+        for join in self.joins:
+            jname = join.join_field.name
+            join_values = data[jname].values()  # order?
+            ret.extend(join_values)
+        return ret
 
-class SQLCompiler(BaseSQLCompiler):
+
+class SelectSQLCompiler(BaseSQLCompiler):
     def __init__(self, query, connection, using, elide_empty=True):
         super().__init__(query, connection, using, elide_empty)
 
@@ -83,8 +114,20 @@ class SQLCompiler(BaseSQLCompiler):
         # pre_sql_setup mutates self and populates `self.select`
         extra_select, order_by, group_by = self.pre_sql_setup(with_col_aliases=False)
         opts = self.query.get_meta()
+        # any way to find the actual manager/queryset? then i can pass the cache parameters
+        # now i could check in opts.managers whether there's a CachableQueryset, but that
+        # does not tell me whether the manager was _used_ only whether the model has it _defined_.
         fields = [(f.db_column or f.attname) for f in opts.fields]
-        st = SelectStatement(opts.db_table, fields, self.where)
+
+        joins = []
+        for alias_name, alias in self.query.alias_map.items():
+            if not self.query.alias_refcount[alias_name]:
+                continue
+            if not isinstance(alias, Join):
+                # i guess?
+                continue
+            joins.append(alias)
+        st = SelectStatement(opts.db_table, fields, self.where, joins)
         return st
 
     def field_as_sql(self, field, val):
@@ -103,7 +146,7 @@ class SQLCompiler(BaseSQLCompiler):
         raise ValueError
 
 
-class SQLInsertCompiler(SQLCompiler, BaseSQLInsertCompiler):
+class SQLInsertCompiler(SelectSQLCompiler, BaseSQLInsertCompiler):
     """A wrapper class for compatibility with Django specifications."""
 
     def executable(self):
@@ -124,22 +167,23 @@ class SQLInsertCompiler(SQLCompiler, BaseSQLInsertCompiler):
             return cursor.execute(st)
         # this is supposed to apply converters if returning
 
-    pass
 
-
-class SQLDeleteCompiler(SQLCompiler, BaseSQLDeleteCompiler):
+class SQLDeleteCompiler(SelectSQLCompiler, BaseSQLDeleteCompiler):
     """A wrapper class for compatibility with Django specifications."""
 
     pass
 
 
-class SQLUpdateCompiler(SQLCompiler, BaseSQLUpdateCompiler):
+class SQLUpdateCompiler(SelectSQLCompiler, BaseSQLUpdateCompiler):
     """A wrapper class for compatibility with Django specifications."""
 
     pass
 
 
-class SQLAggregateCompiler(SQLCompiler, BaseSQLAggregateCompiler):
+class SQLAggregateCompiler(SelectSQLCompiler, BaseSQLAggregateCompiler):
     """A wrapper class for compatibility with Django specifications."""
 
     pass
+
+
+SQLCompiler = SelectSQLCompiler
