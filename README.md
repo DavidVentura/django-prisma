@@ -37,17 +37,46 @@ class User(models.Model):
     id = models.AutoField(primary_key=True)
     email = models.CharField(max_length=200, unique=True)
     name = models.CharField(max_length=200, null=True)
+
+    objects = models.Manager()
+    with_cache = CacheableManager(swr=60, ttl=60)
+
+
+class Pet(models.Model):
+    class Meta:
+        db_table = 'Pet'
+    id = models.AutoField(primary_key=True)
+    name = models.CharField(max_length=200)
+    owner = models.ForeignKey(to=User, on_delete=models.CASCADE, db_column='ownerId')
 ```
 
 That's it, you can use basic features (select, insert) normally:
 
 ```python
-User.objects.create(name="i just created this, again",
-                    email="some@email-value-2")
+User.objects.create(name="askdjask", email="askdjask")
 
+# Single object
 user = User.objects.get(name='i just created this')
-print(user, user.id, user.name, user.email)
 
+# Basic lookup
 for user in User.objects.all():
-    print(user, user.id, user.name, user.email)
+    print(user.name)
+
+# Lazy lookup
+for pet in Pet.objects.all():
+    print(pet.id, pet.name)
+    print("with lazy lookup", pet.owner)
+
+# with "IN" lookup for id
+for p in Pet.objects.all().prefetch_related("owner"):
+    print('pet', p, p.id, p.name)
+    print('owner (no query?)', p.owner)
+
+# with JOIN
+for p in Pet.objects.all().select_related("owner"):
+    print('pet', p, p.id, p.name)
+    print('owner (no query?)', p.owner)
+
+# Using Accelerate's cache strategy (kinda)
+User.with_cache.all()
 ```
