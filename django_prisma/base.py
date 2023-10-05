@@ -132,22 +132,25 @@ class PrismaDatabaseWrapper(BaseDatabaseWrapper):
         headers = {"Connection": "keep-alive", "Authorization": f"Bearer {self.token}"}
         self.session = requests.Session()
         self.session.headers.update(headers)
+        self._started = False
 
     def create_cursor(self, name=None):
         return Cursor(self.session, self.schema_id)
 
     def is_usable(self):
-        return True
+        return self._started
 
     def get_new_connection(self, conn_params):
         print("get new conn")
 
     def connect(self):
         print("called connect")
-        r = self.session.put(
-            SCHEMA_ENDPOINT.format(schema_id=self.schema_id), data=self.schema_inline, verify=False
-        )
+        if self._started:
+            return
+        r = self.session.put(SCHEMA_ENDPOINT.format(schema_id=self.schema_id), data=self.schema_inline, verify=False)
         if not r.ok:
             raise ValueError(f"Failed to start up data-proxy: {r.text}")
+        self._started = True
+
 
 DatabaseWrapper = PrismaDatabaseWrapper
