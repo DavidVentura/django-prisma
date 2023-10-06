@@ -6,4 +6,5 @@ authors = []
 dependencies = [
     "django",
     "requests",
+    "lark",
 ]
