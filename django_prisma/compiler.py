@@ -129,7 +129,7 @@ class UpdateStatement(Statement):
         print(self.statement)
 
     def dict_to_tuple(self, data: dict[str, Any]) -> list[Any]:
-        return [data['count']]
+        return data['count']
 
 class SelectSQLCompiler(BaseSQLCompiler):
     def __init__(self, query, connection, using, elide_empty=True):

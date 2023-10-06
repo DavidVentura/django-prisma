@@ -117,8 +117,12 @@ class Cursor:
 
         result = r.json()["data"][key]
         if isinstance(result, list):
+            # Multiple results must each get formatted as rows
             return [[other.dict_to_tuple(r) for r in result]]
-        return [[other.dict_to_tuple(result)]]
+        _tuple = other.dict_to_tuple(result)
+        if isinstance(_tuple, int): # Update returns # of rows
+            return _tuple
+        return [[_tuple]]
 
     def close(self):
         pass
