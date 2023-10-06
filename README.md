@@ -83,3 +83,10 @@ for p in Pet.objects.all().select_related("owner"):
     print("pet", p, p.id, p.name)
     print("owner (without a lazy query)", p.owner)
 ```
+
+And even specify your cache strategy:
+
+```python
+cs = CacheStrategy(ttl=60, swr=60)
+user = User.objects.with_cache(cs).all()
+```

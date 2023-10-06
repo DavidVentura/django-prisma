@@ -1,4 +1,6 @@
-from typing import Any, Protocol
+
+from typing import Any, Protocol, Optional
+
 from django.db.models.query import Field
 from django.db.models.sql.constants import MULTI, SINGLE
 from django.db.models.sql.compiler import (
@@ -13,12 +15,20 @@ from django.db.models.sql.where import WhereNode, AND, tree
 from django.db.models.lookups import Exact, In
 from django.db.models.expressions import Col
 
+from django_prisma.manager import CacheableManager, CacheStrategy
 
-class InsertStatement:
+class Statement(Protocol):
+    statement: dict
+    cache_strategy: Optional[CacheStrategy]
+    def dict_to_tuple(self, data: dict[str, Any]) -> tuple[Any]:
+        ...
+
+class InsertStatement(Statement):
     def __init__(self, model: str, field_names: list[Field], values: list):
         self.model = model
-        self.field_names: list[str] = [f.name for f in field_names]
+        self.field_names = [str(f.name) for f in field_names]
         self.field_values = values
+        self.cache_strategy = None
 
     @property
     def statement(self):
@@ -60,17 +70,13 @@ def where_to_dict(w: WhereNode):
     return ret
 
 
-class Statement(Protocol):
-    statement: dict
-    def dict_to_tuple(self, data: dict[str, Any]) -> tuple[Any]:
-        ...
-
-class SelectStatement:
-    def __init__(self, model: str, field_names: list[str], where: WhereNode, joins: list[Join]):
+class SelectStatement(Statement):
+    def __init__(self, model: str, field_names: list[str], where: WhereNode, joins: list[Join], cache_strategy: Optional[CacheStrategy]):
         self.model = model
         self.field_names = field_names
         self.where = where
         self.joins = joins
+        self.cache_strategy = cache_strategy
         _where = where_to_dict(where)
         self.statement = {
             "modelName": model,
@@ -127,7 +133,11 @@ class SelectSQLCompiler(BaseSQLCompiler):
                 # i guess?
                 continue
             joins.append(alias)
-        st = SelectStatement(opts.db_table, fields, self.where, joins)
+        cache_strategy = None
+        for m in opts.managers:
+            if isinstance(m, CacheableManager):
+                cache_strategy = m.cache_strategy
+        st = SelectStatement(opts.db_table, fields, self.where, joins, cache_strategy)
         return st
 
     def field_as_sql(self, field, val):

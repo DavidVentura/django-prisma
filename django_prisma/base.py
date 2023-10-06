@@ -89,7 +89,10 @@ class Cursor:
     def execute(self, other: Statement, other2=None):
         key = other.statement["action"] + other.statement["modelName"]  # findMany User
         data = json.dumps(other.statement)
-        _cache_headers = {"cache-control": "max-age=60,stale-while-revalidate=60"}
+        if other.cache_strategy:
+            _cache_headers = {"cache-control": "max-age=60,stale-while-revalidate=60"}
+        else:
+            _cache_headers = {}
         r = self.session.post(
             GRAPHQL_ENDPOINT.format(schema_id=self.schema_id), verify=False, data=data, headers=_cache_headers
         )
