@@ -2,6 +2,18 @@ This repo is a proof of concept for a database back-end for Prisma (Accelerate) 
 
 ## Example
 
+You can specify per-queryset cache-strategies (or no caching):
+
+```python
+cs = CacheStrategy(ttl=60, swr=60)
+users_fast = User.objects.with_cache(cs).all()
+users_slow = User.objects.all()
+```
+
+## How to use it
+
+(Don't)
+
 Configure your back-end to use this backend by setting your token and schema path.
 
 ```python
@@ -54,39 +66,4 @@ class Pet(models.Model):
     id = models.AutoField(primary_key=True)
     name = models.CharField()
     owner = models.ForeignKey(to=User, on_delete=models.CASCADE, db_column="ownerId")
-```
-
-That's it, you can use basic features (select, insert) normally:
-
-```python
-User.objects.create(name="a name", email="definitely an email address")
-
-# Fetch Single object
-user = User.objects.get(name="i just created this")
-
-# Basic lookup
-for user in User.objects.all():
-    print(user.name)
-
-# Lazy lookup
-for pet in Pet.objects.all():
-    print(pet.id, pet.name)
-    print("owner (with lazy lookup)", pet.owner)
-
-# with "IN" lookup for id
-for p in Pet.objects.all().prefetch_related("owner"):
-    print("pet", p, p.id, p.name)
-    print("owner (without a lazy query)", p.owner)
-
-# with JOIN
-for p in Pet.objects.all().select_related("owner"):
-    print("pet", p, p.id, p.name)
-    print("owner (without a lazy query)", p.owner)
-```
-
-And even specify your cache strategy:
-
-```python
-cs = CacheStrategy(ttl=60, swr=60)
-user = User.objects.with_cache(cs).all()
 ```
