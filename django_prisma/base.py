@@ -22,6 +22,7 @@ SCHEMA_ENDPOINT = "https://accelerate.prisma-data.net/5.1.1/{schema_id}/schema"
 
 
 class PrismaDatabaseFeatures(DatabaseFeatures):
+    uses_savepoints = False
     pass
 
 
@@ -38,6 +39,14 @@ class PrismaDatabaseOperations(BaseDatabaseOperations):
         print("bulk", fields, placeholder_rows)
         return ""
 
+    def adapt_datetimefield_value(self, value):
+        if value is None:
+            return None
+        # Prisma doesn't support datetime with ISO offset
+        # https://github.com/prisma/prisma/issues/9516
+        d, _, _ = value.isoformat().partition('+')
+        # It also requires a silly trailing z
+        return d + 'z'
 
 class PrismaDatabaseClient(BaseDatabaseClient):
     def __init__(self, wrapper):
@@ -67,6 +76,8 @@ class DatabaseError(Error):
 class DataError(DatabaseError):
     pass
 
+class FieldNotFoundError(DataError):
+    pass
 
 class PrismaDatabase:
     DataError = DataError
@@ -101,6 +112,8 @@ class Cursor:
             ufe = error["user_facing_error"]
             if ufe["error_code"] == "P2002":
                 raise PrismaDatabase.IntegrityError(ufe["message"])
+            if ufe["error_code"] == "P2009":
+                raise FieldNotFoundError(ufe["message"])
 
         result = r.json()["data"][key]
         if isinstance(result, list):

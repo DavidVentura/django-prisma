@@ -108,6 +108,29 @@ class SelectStatement(Statement):
         return ret
 
 
+class UpdateStatement(Statement):
+    def __init__(self, model: str, field_name_values: dict[str, Any], where: WhereNode, joins: list[Join], cache_strategy: Optional[CacheStrategy]):
+        self.model = model
+        self.where = where
+        self.joins = joins
+        self.cache_strategy = None
+        _where = where_to_dict(where)
+        self.statement = {
+            "modelName": model,
+            "action": "updateMany",
+            "query": {
+                "arguments": {
+                    "where": _where,
+                    "data": field_name_values,
+                },
+                "selection": {"$composites": True, "$scalars": True},
+            },
+        }
+        print(self.statement)
+
+    def dict_to_tuple(self, data: dict[str, Any]) -> list[Any]:
+        return [data['count']]
+
 class SelectSQLCompiler(BaseSQLCompiler):
     def __init__(self, query, connection, using, elide_empty=True):
         super().__init__(query, connection, using, elide_empty)
@@ -186,8 +209,14 @@ class SQLDeleteCompiler(SelectSQLCompiler, BaseSQLDeleteCompiler):
 
 class SQLUpdateCompiler(SelectSQLCompiler, BaseSQLUpdateCompiler):
     """A wrapper class for compatibility with Django specifications."""
-
-    pass
+    def executable(self):
+        new_values = {}
+        opts = self.query.get_meta()
+        for field, model, val in self.query.values:
+            val = field.get_db_prep_save(val, connection=self.connection)
+            new_values[field.name] = val
+        print(self.query.where, new_values)
+        return UpdateStatement(opts.db_table, new_values, self.query.where, [], None)
 
 
 class SQLAggregateCompiler(SelectSQLCompiler, BaseSQLAggregateCompiler):
