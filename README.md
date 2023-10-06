@@ -1,4 +1,5 @@
 This repo is a proof of concept for a database back-end for Prisma (Accelerate) with Django.
+It works for basic stuff and can even open the Admin panel!
 
 ## Example
 
@@ -9,6 +10,29 @@ cs = CacheStrategy(ttl=60, swr=60)
 users_fast = User.objects.with_cache(cs).all()
 users_slow = User.objects.all()
 ```
+
+## Problems
+
+A lot of features are missing, anything behind very basic querying won't work.
+
+The migration roundtrip breaks without manual intervention:
+  - `manage.py migrate`
+  - `prisma db pull`
+  - `manage.py runserver`
+
+This is because when running `prisma db pull`, the generated names for foreign keys don't match the database:
+
+As an example, the `auth_permission` table has a `content_type` foreign key.
+```
+prismatest=# select * from "auth_permission";
+ id |          name           | content_type_id |      codename      
+----+-------------------------+-----------------+--------------------
+  1 | Can add user            |               1 | add_user
+```
+
+But `prisma db pull` calls the field `django_content_type`, which later breaks django.
+
+Renaming the FK fields to remove the (Django) app-name from them makes this work again.
 
 ## How to use it
 
