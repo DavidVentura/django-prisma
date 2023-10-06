@@ -15,6 +15,7 @@ from django.db.models.sql.datastructures import Join
 from django.db.models.sql.where import WhereNode, AND, tree
 from django.db.models.lookups import Exact, In, GreaterThan
 from django.db.models.expressions import Col
+from django.db.models.aggregates import Count, Star
 
 from django_prisma.manager import CacheableManager, CacheStrategy
 
@@ -47,7 +48,7 @@ class InsertStatement(Statement):
 
     def dict_to_tuple(self, data: dict[str, Any]) -> list[Any]:
         ret = [data[colname] for colname in self.field_names]
-        return ret
+        return [[ret]]
 
 
 def cast_to_prisma(val: Any) -> Any:
@@ -84,6 +85,50 @@ def where_to_dict(w: WhereNode):
         for c in w.children:
             ret.update(node_to_dict(c))
     return ret
+
+
+class AggregateStatement(Statement):
+    def __init__(self, model: str, aggregates: dict[str, Count], cache_strategy: Optional[CacheStrategy]):
+        # {"modelName":"Pet","action":"aggregate","query":{"arguments":{},"selection":{"_count":{"arguments":{},"selection":{"_all":true}}}}}
+        self.model = model
+        self.field_names = []
+        for k in aggregates.keys():
+            if k == "__count":
+                k = "_count"
+            self.field_names.append(k)
+        self.cache_strategy = cache_strategy
+        self.statement = {
+            "modelName": model,
+            "action": "aggregate",
+            "query": {
+                "arguments": {},
+                "selection": {},
+            },
+        }
+        for agg in aggregates.values():
+            match agg:
+                case Count():
+                    _agg_name = "_count"
+                case _:
+                    assert False, f"Agg {agg} unhandled"
+            sel = {}
+            for exp in agg.source_expressions:
+                match exp:
+                    case Star():
+                        key = "_all"
+                    case default:
+                        assert False, f"Expresion {exp} unhandled"
+                sel[key] = True
+                self.statement["query"]["selection"][_agg_name] = {"arguments": {}, "selection": sel}
+
+    def query(self) -> dict[str, Any]:
+        return self.statement
+
+    def dict_to_tuple(self, data: dict[str, Any]) -> list[Any]:
+        ret = [data[colname] for colname in self.field_names]
+        assert len(ret) == 1
+        k, v = ret[0].popitem()
+        return [[v]]
 
 
 class SelectStatement(Statement):
@@ -159,10 +204,21 @@ class SelectSQLCompiler(BaseSQLCompiler):
         # pre_sql_setup mutates self and populates `self.select`
         extra_select, order_by, group_by = self.pre_sql_setup(with_col_aliases=False)
         opts = self.query.get_meta()
-        # any way to find the actual manager/queryset? then i can pass the cache parameters
-        # now i could check in opts.managers whether there's a CachableQueryset, but that
-        # does not tell me whether the manager was _used_ only whether the model has it _defined_.
         fields = [(f.db_column or f.attname) for f in opts.fields]
+
+        # any way to find the actual manager/queryset?
+        # this only checks whether the manager instance was _last used_ for a 
+        # query with cache.
+        cache_strategy = None
+        for m in opts.managers:
+            if isinstance(m, CacheableManager):
+                cache_strategy = m.cache_strategy
+
+        # TODO: pre_sql_setup probably has enough information to know when
+        # it's just a Count(*) and when it's SELECT a,b, count(c)
+        annotations = self.query.annotation_select
+        if annotations:
+            return AggregateStatement(opts.db_table, annotations, cache_strategy)
 
         joins = []
         for alias_name, alias in self.query.alias_map.items():
@@ -172,10 +228,6 @@ class SelectSQLCompiler(BaseSQLCompiler):
                 # i guess?
                 continue
             joins.append(alias)
-        cache_strategy = None
-        for m in opts.managers:
-            if isinstance(m, CacheableManager):
-                cache_strategy = m.cache_strategy
         st = SelectStatement(opts.db_table, fields, self.where, joins, cache_strategy)
         return st
 
