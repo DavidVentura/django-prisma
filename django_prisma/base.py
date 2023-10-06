@@ -15,7 +15,7 @@ from django.db.backends.base.operations import BaseDatabaseOperations
 from django.db.backends.base.introspection import BaseDatabaseIntrospection
 from django.db.backends.base.schema import BaseDatabaseSchemaEditor
 
-from django_prisma.compiler import Statement
+from django_prisma.compiler import Statement, datetime_to_prisma
 
 GRAPHQL_ENDPOINT = "https://accelerate.prisma-data.net/5.1.1/{schema_id}/graphql"
 SCHEMA_ENDPOINT = "https://accelerate.prisma-data.net/5.1.1/{schema_id}/schema"
@@ -42,11 +42,7 @@ class PrismaDatabaseOperations(BaseDatabaseOperations):
     def adapt_datetimefield_value(self, value):
         if value is None:
             return None
-        # Prisma doesn't support datetime with ISO offset
-        # https://github.com/prisma/prisma/issues/9516
-        d, _, _ = value.isoformat().partition('+')
-        # It also requires a silly trailing z
-        return d + 'z'
+        return datetime_to_prisma(value)
 
 class PrismaDatabaseClient(BaseDatabaseClient):
     def __init__(self, wrapper):

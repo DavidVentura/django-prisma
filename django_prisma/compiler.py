@@ -1,3 +1,4 @@
+import datetime
 
 from typing import Any, Protocol, Optional
 
@@ -12,7 +13,7 @@ from django.db.models.sql.compiler import (
 )
 from django.db.models.sql.datastructures import Join
 from django.db.models.sql.where import WhereNode, AND, tree
-from django.db.models.lookups import Exact, In
+from django.db.models.lookups import Exact, In, GreaterThan
 from django.db.models.expressions import Col
 
 from django_prisma.manager import CacheableManager, CacheStrategy
@@ -49,6 +50,18 @@ class InsertStatement(Statement):
         return ret
 
 
+def cast_to_prisma(val: Any) -> Any:
+    match val:
+        case datetime.datetime():
+            return datetime_to_prisma(val)
+
+def datetime_to_prisma(dt) -> str:
+    # Prisma doesn't support datetime with ISO offset
+    # https://github.com/prisma/prisma/issues/9516
+    d, _, _ = dt.isoformat().partition('+')
+    # It also requires a silly trailing z
+    return d + 'z'
+
 def node_to_dict(n: tree.Node):
     match n:
         case Exact():
@@ -59,7 +72,10 @@ def node_to_dict(n: tree.Node):
             assert isinstance(n.lhs, Col)
             assert isinstance(n.rhs, list)
             return {n.lhs.field.name: {"in": n.rhs}}
-    assert False, f'got {n}'
+        case GreaterThan():
+            return {n.lhs.field.name: {"gt": cast_to_prisma(n.rhs)}}
+
+    assert False, f'got {n}, {type(n)}'
 
 
 def where_to_dict(w: WhereNode):
