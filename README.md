@@ -1,8 +1,5 @@
 This repo is a proof of concept for a database back-end for Prisma (Accelerate) with Django.
 
-This does not manage the database schema yet, so you must ensure your models match what you've defined in `schema.prisma`.
-
-
 ## Example
 
 Configure your back-end to use this backend by setting your token and schema path.
@@ -18,36 +15,45 @@ DATABASES = {
 
 ```
 
-Then, ensure the Django model matches the `schema.prisma`
+Then, generate the Django models from the `schema.prisma`
 
 ```prisma
 model User {
   id    Int     @id @default(autoincrement())
   email String  @unique
   name  String?
+  pets  Pet[]
+}
+
+model Pet {
+  id      Int    @id @default(autoincrement())
+  name    String
+  ownerId Int
+  owner   User   @relation(fields: [ownerId], references: [id])
 }
 ```
 
-and `users/models.py`
+```bash
+python django_prisma/psl_parser.py ../prisma/schema.prisma > users/models.py
+```
+
+will generate `users/models.py`:
 
 ```python
 class User(models.Model):
     class Meta:
-        db_table = 'User'
+        db_table = "User"
     id = models.AutoField(primary_key=True)
-    email = models.CharField(max_length=200, unique=True)
-    name = models.CharField(max_length=200, null=True)
-
-    objects = models.Manager()
-    with_cache = CacheableManager(swr=60, ttl=60)
+    email = models.CharField(unique=True)
+    name = models.CharField(null=True)
 
 
 class Pet(models.Model):
     class Meta:
-        db_table = 'Pet'
+        db_table = "Pet"
     id = models.AutoField(primary_key=True)
-    name = models.CharField(max_length=200)
-    owner = models.ForeignKey(to=User, on_delete=models.CASCADE, db_column='ownerId')
+    name = models.CharField()
+    owner = models.ForeignKey(to=User, on_delete=models.CASCADE, db_column="ownerId")
 ```
 
 That's it, you can use basic features (select, insert) normally:

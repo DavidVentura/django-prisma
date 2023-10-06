@@ -1,6 +1,5 @@
-import dataclasses
+from django_prisma.psl_types import *
 from lark import Lark, Transformer
-from typing import Optional
 
 grammar = """
 ?start: (generator | datasource | model)+
@@ -44,83 +43,6 @@ OPTIONAL: "?"
 %ignore WS
 """
 
-@dataclasses.dataclass
-class PSLFK:
-    pass
-
-@dataclasses.dataclass
-class PSLType:
-    pass
-
-@dataclasses.dataclass
-class UserDefinedType(PSLType):
-    name: str
-
-@dataclasses.dataclass
-class Int(PSLType):
-    pass
-
-@dataclasses.dataclass
-class String(PSLType):
-    pass
-
-
-@dataclasses.dataclass
-class Attribute:
-    pass
-@dataclasses.dataclass
-class AttributePK(Attribute):
-    pass
-@dataclasses.dataclass
-class AttributeUnique(Attribute):
-    pass
-@dataclasses.dataclass
-class AttributeOptional(Attribute):
-    pass
-@dataclasses.dataclass
-class AttributeArray(Attribute):
-    pass
-@dataclasses.dataclass
-class AttributeDefaultAutoinc(Attribute):
-    pass
-
-@dataclasses.dataclass
-class AttributeRelation(Attribute):
-    local_field_name: list[str]
-    remote_field_name: list[str]
-
-@dataclasses.dataclass
-class PSLColumn:
-    name: str
-    type_: Int | String | UserDefinedType
-    props: list[Attribute]
-    is_array: bool
-    is_opt: bool
-
-
-@dataclasses.dataclass
-class CompoundUniqueConstraint:
-    fields: list[str]
-
-@dataclasses.dataclass
-class PSLModel:
-    name: str
-    columns: list[PSLColumn]
-    compound_unique_constraints: list[CompoundUniqueConstraint]
-
-@dataclasses.dataclass
-class PSLDatasource:
-    pass
-
-@dataclasses.dataclass
-class PSLGenerator:
-    pass
-
-@dataclasses.dataclass
-class PSL:
-    models: list[PSLModel]
-    datasources: list[PSLDatasource]
-    generator: Optional[PSLGenerator]
 
 class PSLTransformer(Transformer):
     identifier_list = list
@@ -152,7 +74,6 @@ class PSLTransformer(Transformer):
                 case AttributeDefaultAutoinc():
                     ret.append(item)
                 case _:
-                    print("other attr modifiers", item)
                     ret.append(item)
         return ret
 
@@ -165,9 +86,9 @@ class PSLTransformer(Transformer):
                 assert False, f"Did not deal with {item}"
 
     def relation_body(self, items):
-        pairs = {items[i]: items[i+1] for i in range(0, len(items), 2)}
-        local = pairs['fields']
-        remote = pairs['references']
+        pairs = {items[i]: items[i + 1] for i in range(0, len(items), 2)}
+        local = pairs["fields"]
+        remote = pairs["references"]
         return AttributeRelation(local_field_name=local, remote_field_name=remote)
 
     def opt_field(self, items):
@@ -183,7 +104,6 @@ class PSLTransformer(Transformer):
         flattened_modifiers = [item for sublist in modifiers for item in sublist]
         return PSLColumn(name, type_, props=flattened_modifiers, is_array=False, is_opt=False)
 
-
     def IDENTIFIER(self, items):
         return str(items)
 
@@ -196,7 +116,9 @@ class PSLTransformer(Transformer):
             case _:
                 return UserDefinedType(str(items))
 
-_parser = Lark(grammar, parser='lalr', transformer=PSLTransformer())
+
+_parser = Lark(grammar, parser="lalr", transformer=PSLTransformer())
+
 
 def parse_prisma_schema(text: str) -> PSL:
     result = _parser.parse(text)
@@ -213,3 +135,10 @@ def parse_prisma_schema(text: str) -> PSL:
                 assert generator is None
                 generator = child
     return PSL(models, datasources, generator)
+
+
+if __name__ == "__main__":
+    import sys
+    models = parse_prisma_schema(open(sys.argv[1]).read()).models
+    for model in models:
+        print(model.to_django_model())

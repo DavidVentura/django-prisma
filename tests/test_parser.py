@@ -1,4 +1,5 @@
-from django_prisma.model_generator import *
+from django_prisma.psl_types import *
+from django_prisma.psl_parser import parse_prisma_schema
 
 
 
@@ -73,3 +74,43 @@ def test_parse_schema():
         datasources=[],
         generator=None,
     )
+
+
+    print(res.models[0].to_django_model())
+
+def test_render_model():
+    data = """
+    model User {
+      id    Int     @id @default(autoincrement())
+      email String  @unique
+      name  String?
+      pets  Pet[]
+    }
+
+    model Pet {
+      id      Int    @id @default(autoincrement())
+      name    String
+      ownerId Int
+      owner   User   @relation(fields: [ownerId], references: [id])
+    }
+    """
+    res = parse_prisma_schema(data)
+
+    expected_user = """
+class User(models.Model):
+    class Meta:
+        db_table = "User"
+    id = models.AutoField(primary_key=True)
+    email = models.CharField(unique=True)
+    name = models.CharField(null=True)
+"""
+    expected_pet = """
+class Pet(models.Model):
+    class Meta:
+        db_table = "Pet"
+    id = models.AutoField(primary_key=True)
+    name = models.CharField()
+    owner = models.ForeignKey(to=User, on_delete=models.CASCADE, db_column="ownerId")
+"""
+    assert res.models[0].to_django_model() == expected_user
+    assert res.models[1].to_django_model() == expected_pet
