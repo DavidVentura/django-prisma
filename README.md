@@ -59,10 +59,10 @@ class Pet(models.Model):
 That's it, you can use basic features (select, insert) normally:
 
 ```python
-User.objects.create(name="askdjask", email="askdjask")
+User.objects.create(name="a name", email="definitely an email address")
 
-# Single object
-user = User.objects.get(name='i just created this')
+# Fetch Single object
+user = User.objects.get(name="i just created this")
 
 # Basic lookup
 for user in User.objects.all():
@@ -71,18 +71,15 @@ for user in User.objects.all():
 # Lazy lookup
 for pet in Pet.objects.all():
     print(pet.id, pet.name)
-    print("with lazy lookup", pet.owner)
+    print("owner (with lazy lookup)", pet.owner)
 
 # with "IN" lookup for id
 for p in Pet.objects.all().prefetch_related("owner"):
-    print('pet', p, p.id, p.name)
-    print('owner (no query?)', p.owner)
+    print("pet", p, p.id, p.name)
+    print("owner (without a lazy query)", p.owner)
 
 # with JOIN
 for p in Pet.objects.all().select_related("owner"):
-    print('pet', p, p.id, p.name)
-    print('owner (no query?)', p.owner)
-
-# Using Accelerate's cache strategy (kinda)
-User.with_cache.all()
+    print("pet", p, p.id, p.name)
+    print("owner (without a lazy query)", p.owner)
 ```
